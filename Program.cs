@@ -8,7 +8,6 @@ static void Usage()
     Console.WriteLine("Usage:");
     Console.WriteLine("\t" + Exe + " -l                        List available COM ports");
     Console.WriteLine("\t" + Exe + " -p COMx -f firmware.bin   Flash a file");
-    Console.WriteLine("\t" + Exe + " -p COMx -w firmware.bin   ReadFlash to file");
 }
 
 
@@ -36,13 +35,13 @@ switch (args.Length)
             Usage();
             break;
         }
-        if (args[2] != "-f" && args[2] != "-w")
+        if (args[2] != "-f")
         {
             Usage();
             break;
         }
 
- 
+
 
         RT_890_UART RT = new RT_890_UART();
         try
@@ -68,68 +67,56 @@ switch (args.Length)
             Console.WriteLine("Timeout error! Is the radio in bootloader mode?");
             break;
         }
-
-
-        if (args[2] == "-w")
+        byte[] Firmware;
+        try
         {
-            byte[] Firmware;
-            Firmware = RT.Command_ReadFlash(0);
-            File.WriteAllBytes(args[3], Firmware);
-            Console.WriteLine("Wrote " + Firmware.Length + " bytes to " + args[3]);
+            Firmware = System.IO.File.ReadAllBytes(args[3]);
 
         }
-        if (args[2] == "-f")
+        catch
         {
-            byte[] Firmware;
-            try
+            Console.WriteLine("Failed to read file!");
+            break;
+        }
+        try
+        {
+            if (!RT.Command_EraseFlash())
             {
-                Firmware = System.IO.File.ReadAllBytes(args[3]);
-                
-            }
-            catch
-            {
-                Console.WriteLine("Failed to read file!");
+                Console.WriteLine("Failed to erase flash!");
                 break;
             }
-            try
+        }
+        catch (Exception Ex)
+        {
+            Console.WriteLine("\rUnexpected failure erasing flash! Error: ", Ex.Message);
+            break;
+        }
+
+        try
+        {
+            ushort i;
+
+            for (i = 0; i < Firmware.Length; i += 128)
             {
-                if (!RT.Command_EraseFlash())
+                Console.Write("\rFlashing at 0x" + i.ToString("X4"));
+                Console.Out.Flush();
+                if (!RT.Command_WriteFlash(i, Firmware))
                 {
-                    Console.WriteLine("Failed to erase flash!");
+                    Console.WriteLine("\rFailed to flash at 0x" + i.ToString("X4") + "!");
+                    Console.Out.Flush();
                     break;
                 }
             }
-            catch (Exception Ex)
+            if (i == Firmware.Length)
             {
-                Console.WriteLine("\rUnexpected failure erasing flash! Error: ", Ex.Message);
-                break;
-            }
-
-            try
-            {
-                ushort i;
-
-                for (i = 0; i < Firmware.Length; i += 128)
-                {
-                    Console.Write("\rFlashing at 0x" + i.ToString("X4"));
-                    Console.Out.Flush();
-                    if (!RT.Command_WriteFlash(i, Firmware))
-                    {
-                        Console.WriteLine("\rFailed to flash at 0x" + i.ToString("X4") + "!");
-                        Console.Out.Flush();
-                        break;
-                    }
-                }
-                if (i == Firmware.Length)
-                {
-                    Console.WriteLine("\rFlashing complete!");
-                }
-            }
-            catch (Exception Ex)
-            {
-                Console.WriteLine("\rUnexpected failure writing to flash! Error: ", Ex.Message);
+                Console.WriteLine("\rFlashing complete!");
             }
         }
+        catch (Exception Ex)
+        {
+            Console.WriteLine("\rUnexpected failure writing to flash! Error: ", Ex.Message);
+        }
+
         Console.WriteLine();
         RT.Close();
         break;
